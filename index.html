@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noodp, noydir">
+    <meta name="googlebot" content="noindex, nofollow">
+    <title>Generador de Comprobantes - adfines.net</title>
+    <script src="./html2pdf.js"></script>
+    <script src="./tailwinds.css"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0f0c1b;
+            background-image: radial-gradient(circle at top right, #2e1065 0%, #0f0c1b 100%);
+        }
+
+        .pdf-preview-container {
+            width: 790px;
+            height: 980px;
+            min-height: 980px;
+            background: linear-gradient(135deg, #fdfaff 0%, #f2e3ff 100%);
+            padding: 48px;
+            box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .pdf-preview-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 14px;
+            background: linear-gradient(90deg, #7c3aed, #c084fc);
+            z-index: 5;
+        }
+
+        .purple-badge {
+            background-color: #5c429c;
+            color: white;
+            padding: 6px 18px;
+            font-weight: 600;
+            border-radius: 10px 0px 10px 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(92, 66, 156, 0.25);
+            min-width: 110px;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 0.05em;
+        }
+
+        .table-header {
+            background-color: #5c429c;
+            color: white;
+        }
+
+        .pdf-content-wrapper {
+            position: relative;
+            z-index: 10;
+        }
+
+        #previewViewport {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #pdfScaleWrapper {
+            transform-origin: center center;
+            transition: transform 0.15s ease-out;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(92, 66, 156, 0.3);
+            border-radius: 20px;
+        }
+
+        .pdf-mode {
+            transform: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+
+        .pdf-mode #scrollContainer {
+            overflow: visible !important;
+            max-height: none !important;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex items-center justify-center p-4">
+
+    <script>
+        const initialItems = [];
+
+        let state = {
+            docType: '',
+            date: '',
+            concept: '',
+            clientName: '',
+            items: [...initialItems]
+        };
+
+        let formElements = {};
+        let previewElements = {};
+        let currentScale = 1;
+
+        function getSecret() {
+            return "ganeshita";
+        }
+
+        function checkPass(input) {
+            return input === getSecret();
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'Selecciona fecha';
+            const months = [
+                'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+            ];
+            const [year, month, day] = dateString.split('-');
+            return `${parseInt(day)}/${months[parseInt(month) - 1]}/${year}`;
+        }
+
+        function showLogin() {
+            document.body.innerHTML = /*html*/`
+                <div id="loginCard" class="max-w-md w-full bg-white/5 border border-white/10 p-8 rounded-3xl shadow-2xl backdrop-blur-md text-center transition-all duration-300">
+                    <h1 class="text-2xl font-bold text-white mb-2">Acceso Privado</h1>
+                    <p class="text-xs text-violet-300/60 mb-6 uppercase tracking-widest">adfines.net</p>
+                    <input type="password" id="passwordField" placeholder="Contraseña de seguridad" class="w-full p-3 mb-4 bg-white/10 text-white rounded-xl border border-white/10 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-center text-sm">
+                    <button id="submitBtn" class="w-full bg-violet-700 hover:bg-violet-800 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-violet-900/30 transition text-sm">Entrar al Sistema</button>
+                    <p id="feedback" class="text-red-400 text-xs mt-3 hidden">Código de acceso incorrecto</p>
+                </div>
+            `;
+
+            const field = document.getElementById('passwordField');
+            const btn = document.getElementById('submitBtn');
+            const feedback = document.getElementById('feedback');
+
+            const attempt = () => {
+                if (checkPass(field.value)) {
+                    buildApp();
+                } else {
+                    feedback.classList.remove('hidden');
+                    field.value = '';
+                }
+            };
+
+            btn.addEventListener('click', attempt);
+            field.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') attempt();
+            });
+        }
+
+        function buildApp() {
+            document.body.innerHTML = /*html*/`
+                <div class="w-full max-w-[1440px] h-[92vh] grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                    
+                    <div class="lg:col-span-5 bg-white/95 backdrop-blur-md p-6 rounded-2xl shadow-2xl border border-white/10 flex flex-col justify-between max-h-full overflow-hidden">
+                        <div class="flex flex-col min-h-0 flex-1">
+                            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 flex-shrink-0">
+                                <svg class="w-5 h-5 text-violet-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Configuración del Documento
+                            </h2>
+
+                            <form id="docForm" class="space-y-3 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+                                <div id="validationError" class="hidden p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-semibold space-y-1"></div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Tipo de Documento</label>
+                                    <select id="docType" class="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition bg-gray-50 text-sm">
+                                        <option value="" disabled selected>Seleccione tipo de documento</option>
+                                        <option value="Cotización">Cotización</option>
+                                        <option value="Ticket">Ticket (Factura Simplificada)</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Fecha</label>
+                                        <input type="date" id="docDate" class="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition bg-gray-50 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Concepto General</label>
+                                        <input type="text" id="docConcept" placeholder="Ej. Asesoría de Facturación" class="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition bg-gray-50 text-sm">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Nombre del Cliente</label>
+                                    <input type="text" id="clientName" placeholder="Nombre completo o empresa" class="w-full p-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition bg-gray-50 text-sm">
+                                </div>
+
+                                <hr class="my-3 border-gray-100">
+
+                                <div class="flex justify-between items-center">
+                                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Detalle de Productos</h3>
+                                    <button type="button" id="addItemBtn" class="bg-violet-100 hover:bg-violet-200 text-violet-700 font-bold px-3 py-1 rounded-lg text-xs transition flex items-center gap-1">
+                                        + Agregar Fila
+                                    </button>
+                                </div>
+
+                                <div id="itemsContainer" class="space-y-2">
+                                </div>
+                            </form>
+                        </div>
+
+                        <button type="button" id="downloadPdfBtn" class="w-full bg-violet-700 hover:bg-violet-800 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-violet-900/30 transition flex items-center justify-center gap-2 mt-4 flex-shrink-0">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Descargar en PDF
+                        </button>
+                    </div>
+
+                    <div class="lg:col-span-7 flex flex-col items-center justify-center overflow-hidden bg-black/20 rounded-2xl p-4 border border-white/5 relative">
+                        <span class="absolute top-3 left-1/2 transform -translate-x-1/2 text-xs font-bold text-violet-300 uppercase tracking-widest z-20 bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">Vista Previa Real</span>
+                        
+                        <div id="previewViewport" class="w-full h-full">
+                            <div id="pdfScaleWrapper">
+                                <div id="pdfContainer" class="pdf-preview-container">
+                                    
+                                    <svg class="absolute top-0 left-0 right-0 h-[160px] w-full pointer-events-none z-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+                                        <path fill="#f3e8ff" fill-opacity="0.5" d="M0,96L60,112C120,128,240,160,360,154.7C480,149,600,107,720,106.7C840,107,960,149,1080,154.7C1200,160,1320,128,1380,112L1440,96L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"></path>
+                                    </svg>
+
+                                    <svg class="absolute bottom-0 left-0 right-0 h-[180px] w-full pointer-events-none z-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+                                        <path fill="#e9d5ff" fill-opacity="0.6" d="M0,224L60,202.7C120,181,240,139,360,138.7C480,139,600,181,720,208C840,235,960,245,1080,229.3C1200,213,1320,171,1380,149.3L1440,128L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"></path>
+                                        <path fill="#f3e8ff" fill-opacity="0.8" d="M0,128L60,149.3C120,171,240,213,360,208C480,203,600,149,720,133.3C840,117,960,139,1080,165.3C1200,192,1320,224,1380,240L1440,256L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"></path>
+                                    </svg>
+
+                                    <div class="pdf-content-wrapper flex flex-col justify-between h-full">
+                                        <div class="space-y-4 flex-1 flex flex-col min-h-0">
+                                            <div class="flex justify-between items-start flex-shrink-0">
+                                                <div class="flex items-center gap-4">
+                                                    <img src="./icon.ico" alt="Icono Laptop" class="w-16 h-16 object-cover rounded-xl border-2 border-violet-300/30 shadow-md">
+                                                    <div>
+                                                        <h1 class="text-2xl font-bold text-violet-950 tracking-wide">www.adfines.net</h1>
+                                                        <p class="text-violet-600 font-medium text-sm mt-0.5" id="previewDate">Selecciona fecha</p>
+                                                    </div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="text-xs font-bold text-violet-500 uppercase tracking-widest bg-violet-100/60 px-2.5 py-1 rounded-lg" id="previewDocType">SIN TIPO</span>
+                                                </div>
+                                            </div>
+
+                                            <div id="paymentSection" class="p-3 bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl shadow-lg border border-violet-400/30 flex items-center justify-between transition-all duration-300 flex-shrink-0">
+                                                <div class="flex items-center gap-3">
+                                                    <img src="./agricola.png" alt="Icono Banco" class="w-10 h-10 object-cover rounded-xl border border-white/20 shadow">
+                                                    <div>
+                                                        <p class="text-[10px] font-bold text-violet-200 uppercase tracking-wider">Depositar a Cuenta</p>
+                                                        <p class="text-sm font-extrabold text-white">Banco Agrícola</p>
+                                                        <p class="text-[10px] text-violet-100">Cuenta de Ahorros</p>
+                                                    </div>
+                                                </div>
+                                                <div class="text-right">
+                                                    <p class="text-base font-black text-yellow-300 tracking-wider">45889653214</p>
+                                                    <p class="text-[10px] font-bold text-white">Luis Humberto Gonzalez Moz</p>
+                                                </div>
+                                            </div>
+
+                                            <div class="space-y-2 max-w-xl flex-shrink-0">
+                                                <div class="flex items-center gap-4">
+                                                    <div class="purple-badge">Cliente</div>
+                                                    <span class="text-lg font-bold text-violet-950" id="previewClientName">Sin cliente</span>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <div class="purple-badge">Concepto</div>
+                                                    <span class="text-lg font-bold text-violet-950" id="previewConcept">Sin concepto</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="rounded-2xl border border-violet-200/60 shadow-md bg-white/95 backdrop-blur-sm flex-1 overflow-hidden flex flex-col min-h-0">
+                                                <div id="scrollContainer" class="overflow-y-auto flex-1 custom-scrollbar">
+                                                    <table class="w-full text-left border-collapse table-fixed">
+                                                        <thead class="sticky top-0 z-20">
+                                                            <tr class="table-header">
+                                                                <th class="py-2.5 px-4 font-semibold text-xs w-12 text-center">#</th>
+                                                                <th class="py-2.5 px-4 font-semibold text-xs w-16 text-center">Unidad</th>
+                                                                <th class="py-2.5 px-4 font-semibold text-xs">Producto</th>
+                                                                <th class="py-2.5 px-4 font-semibold text-xs w-24 text-right">P. Unitario</th>
+                                                                <th class="py-2.5 px-4 font-semibold text-xs w-24 text-right">Subtotal</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody id="previewTableBody">
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 pt-4 flex items-center justify-between border-t border-violet-200/40 flex-shrink-0">
+                                            <div class="flex items-center gap-4">
+                                                <div class="purple-badge text-lg px-6 py-2.5">Total</div>
+                                                <span class="text-2xl font-extrabold text-violet-950" id="previewTotal">$0.00</span>
+                                            </div>
+                                            <p class="text-[10px] font-semibold text-violet-400">Gracias por preferir nuestros servicios</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            `;
+
+            formElements = {
+                validationError: document.getElementById('validationError'),
+                docType: document.getElementById('docType'),
+                docDate: document.getElementById('docDate'),
+                docConcept: document.getElementById('docConcept'),
+                clientName: document.getElementById('clientName'),
+                itemsContainer: document.getElementById('itemsContainer'),
+                addItemBtn: document.getElementById('addItemBtn'),
+                downloadPdfBtn: document.getElementById('downloadPdfBtn')
+            };
+
+            previewElements = {
+                docType: document.getElementById('previewDocType'),
+                date: document.getElementById('previewDate'),
+                concept: document.getElementById('previewConcept'),
+                clientName: document.getElementById('previewClientName'),
+                tableBody: document.getElementById('previewTableBody'),
+                total: document.getElementById('previewTotal'),
+                paymentSection: document.getElementById('paymentSection'),
+                viewport: document.getElementById('previewViewport'),
+                scaleWrapper: document.getElementById('pdfScaleWrapper')
+            };
+
+            bindAppEvents();
+            initFormValues();
+        }
+
+        function bindAppEvents() {
+            formElements.addItemBtn.addEventListener('click', () => {
+                const newItem = {
+                    id: Date.now(),
+                    quantity: 1,
+                    name: '',
+                    price: 0.00
+                };
+                state.items.push(newItem);
+                renderFormItems();
+                updatePreview();
+            });
+
+            formElements.docType.addEventListener('change', (e) => {
+                state.docType = e.target.value;
+                updatePreview();
+            });
+
+            formElements.docDate.addEventListener('change', (e) => {
+                state.date = e.target.value;
+                updatePreview();
+            });
+
+            formElements.docConcept.addEventListener('input', (e) => {
+                state.concept = e.target.value;
+                updatePreview();
+            });
+
+            formElements.clientName.addEventListener('input', (e) => {
+                state.clientName = e.target.value;
+                updatePreview();
+            });
+
+            formElements.downloadPdfBtn.addEventListener('click', () => {
+                formElements.validationError.classList.add('hidden');
+                formElements.validationError.innerHTML = '';
+
+                const errors = [];
+                if (!state.docType) errors.push("Falta seleccionar el Tipo de Documento.");
+                if (!state.date) errors.push("Falta ingresar la Fecha de elaboración.");
+                if (!state.concept.trim()) errors.push("Falta ingresar el Concepto General.");
+                if (!state.clientName.trim()) errors.push("Falta ingresar el Nombre del Cliente.");
+                if (state.items.length === 0) {
+                    errors.push("Debes agregar al menos 1 producto en el detalle.");
+                } else {
+                    const incompleteItems = state.items.some(item => !item.name.trim() || item.price < 0 || item.quantity < 1);
+                    if (incompleteItems) {
+                        errors.push("Todos los productos agregados deben tener descripción, cantidad mínima de 1 y precio válido.");
+                    }
+                }
+
+                if (errors.length > 0) {
+                    formElements.validationError.innerHTML = errors.map(err => `<div>• ${err}</div>`).join('');
+                    formElements.validationError.classList.remove('hidden');
+                    formElements.validationError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    return;
+                }
+
+                const previewContainer = document.getElementById('pdfContainer');
+                const scaleWrapper = document.getElementById('pdfScaleWrapper');
+
+                const originalTransform = scaleWrapper.style.transform;
+                const originalBorderRadius = previewContainer.style.borderRadius;
+                const originalBoxShadow = previewContainer.style.boxShadow;
+                const scrollContainer = document.getElementById('scrollContainer');
+                const originalMaxHeight = scrollContainer.style.maxHeight;
+                const originalOverflow = scrollContainer.style.overflow;
+
+                scaleWrapper.style.transform = 'none';
+                previewContainer.style.borderRadius = '0px';
+                previewContainer.style.boxShadow = 'none';
+                scrollContainer.style.maxHeight = 'none';
+                scrollContainer.style.overflow = 'visible';
+
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                
+                const sanitizedClient = (state.clientName || 'Cliente_Anonimo')
+                    .replace(/[^a-z0-9]/gi, '_')
+                    .toLowerCase();
+
+                const fileName = `${state.docType}_${sanitizedClient}_${year}-${month}-${day}_${hours}-${minutes}.pdf`;
+
+                const opt = {
+                    margin: 0,
+                    filename: fileName,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { 
+                        scale: 2, 
+                        useCORS: true,
+                        letterRendering: true,
+                        scrollX: 0,
+                        scrollY: 0,
+                        logging: false
+                    },
+                    jsPDF: { 
+                        unit: 'px', 
+                        format: [790, 980], 
+                        orientation: 'portrait' 
+                    }
+                };
+
+                html2pdf().from(previewContainer).set(opt).save().then(() => {
+                    scaleWrapper.style.transform = originalTransform;
+                    previewContainer.style.borderRadius = originalBorderRadius;
+                    previewContainer.style.boxShadow = originalBoxShadow;
+                    scrollContainer.style.maxHeight = originalMaxHeight;
+                    scrollContainer.style.overflow = originalOverflow;
+                }).catch(err => {
+                    console.error("Error generating PDF:", err);
+                    scaleWrapper.style.transform = originalTransform;
+                    previewContainer.style.borderRadius = originalBorderRadius;
+                    previewContainer.style.boxShadow = originalBoxShadow;
+                    scrollContainer.style.maxHeight = originalMaxHeight;
+                    scrollContainer.style.overflow = originalOverflow;
+                });
+            });
+
+            window.addEventListener('resize', autoScalePreview);
+        }
+
+        function initFormValues() {
+            formElements.docType.value = state.docType;
+            formElements.docDate.value = state.date;
+            formElements.docConcept.value = state.concept;
+            formElements.clientName.value = state.clientName;
+            renderFormItems();
+            updatePreview();
+            setTimeout(autoScalePreview, 50);
+        }
+
+        function renderFormItems() {
+            formElements.itemsContainer.innerHTML = '';
+            state.items.forEach((item) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'bg-gray-50/80 p-2.5 rounded-xl border border-gray-100 flex flex-col gap-1.5 relative';
+                itemDiv.innerHTML = /*html*/`
+                    <div class="flex items-start gap-2">
+                        <div class="w-14">
+                            <label class="block text-[9px] uppercase font-bold text-gray-400">Cant.</label>
+                            <input type="number" value="${item.quantity}" min="1" onchange="updateItem(${item.id}, 'quantity', this.value)" class="w-full p-1 border border-gray-200 rounded text-center text-xs">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[9px] uppercase font-bold text-gray-400">Descripción</label>
+                            <input type="text" value="${item.name}" oninput="updateItem(${item.id}, 'name', this.value)" class="w-full p-1 border border-gray-200 rounded text-xs">
+                        </div>
+                        <div class="w-20">
+                            <label class="block text-[9px] uppercase font-bold text-gray-400">P. Unitario</label>
+                            <input type="number" step="0.01" value="${item.price}" onchange="updateItem(${item.id}, 'price', this.value)" class="w-full p-1 border border-gray-200 rounded text-right text-xs">
+                        </div>
+                        <button type="button" onclick="removeItem(${item.id})" class="text-red-400 hover:text-red-600 mt-4 p-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+                formElements.itemsContainer.appendChild(itemDiv);
+            });
+        }
+
+        window.updateItem = function(id, field, value) {
+            state.items = state.items.map(item => {
+                if (item.id === id) {
+                    return {
+                        ...item,
+                        [field]: field === 'name' ? value : parseFloat(value) || 0
+                    };
+                }
+                return item;
+            });
+            updatePreview();
+        };
+
+        window.removeItem = function(id) {
+            state.items = state.items.filter(item => item.id !== id);
+            renderFormItems();
+            updatePreview();
+        };
+
+        function autoScalePreview() {
+            if (!previewElements.viewport || !previewElements.scaleWrapper) return;
+            const viewportWidth = previewElements.viewport.clientWidth;
+            const viewportHeight = previewElements.viewport.clientHeight;
+
+            const designWidth = 790;
+            const designHeight = 980;
+
+            const scaleX = viewportWidth / designWidth;
+            const scaleY = viewportHeight / designHeight;
+            currentScale = Math.min(scaleX, scaleY, 1) * 0.95;
+
+            previewElements.scaleWrapper.style.transform = `scale(${currentScale})`;
+        }
+
+        function updatePreview() {
+            if (!previewElements.docType) return;
+            previewElements.docType.textContent = state.docType ? state.docType.toUpperCase() : 'SIN TIPO';
+            previewElements.date.textContent = formatDate(state.date);
+            previewElements.concept.textContent = state.concept || 'Sin concepto';
+            previewElements.clientName.textContent = state.clientName || 'Sin cliente';
+
+            if (state.docType === 'Ticket') {
+                previewElements.paymentSection.style.opacity = '1';
+                previewElements.paymentSection.style.visibility = 'visible';
+                previewElements.paymentSection.style.display = 'flex';
+            } else {
+                previewElements.paymentSection.style.opacity = '0';
+                previewElements.paymentSection.style.visibility = 'hidden';
+                previewElements.paymentSection.style.display = 'none';
+            }
+
+            previewElements.tableBody.innerHTML = '';
+            let total = 0;
+
+            state.items.forEach((item, index) => {
+                const subtotal = item.quantity * item.price;
+                total += subtotal;
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-violet-100 hover:bg-violet-50/30 transition';
+                row.innerHTML = /*html*/`
+                    <td class="py-2.5 px-4 text-center text-xs font-bold text-violet-400 w-12">${index + 1}</td>
+                    <td class="py-2.5 px-4 text-center text-sm font-medium text-violet-950 w-16">${item.quantity}</td>
+                    <td class="py-2.5 px-4 text-xs text-gray-700 font-medium break-words">${item.name || 'Fila sin nombre'}</td>
+                    <td class="py-2.5 px-4 text-right text-sm font-medium text-gray-600 w-24">$${item.price.toFixed(2)}</td>
+                    <td class="py-2.5 px-4 text-right text-sm font-bold text-violet-800 w-24">$${subtotal.toFixed(2)}</td>
+                `;
+                previewElements.tableBody.appendChild(row);
+            });
+
+            previewElements.total.textContent = `$${total.toFixed(2)}`;
+            autoScalePreview();
+        }
+
+        document.addEventListener('DOMContentLoaded', showLogin);
+    </script>
+</body>
+</html>
